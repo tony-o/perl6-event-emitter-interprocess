@@ -32,6 +32,7 @@ $ee.on("echo", -> $data {
 
 my $pro = $proc.start;
 $ee.emit('echo'.encode, $str.encode);
+
 await Promise.allof($promise, $pro);
 
 ok @events[0] eq $str, "Did child echo '$str'?";

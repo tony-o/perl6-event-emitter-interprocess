@@ -28,19 +28,19 @@ submethod BUILD(Bool :$sub-process? = False) {
       );
       my $last = 0;
       my $lastloop = $*IN.eof;
+      while ! $*IN.opened { sleep .1; }
       while (!$*IN.eof) || $lastloop {
-        say $lastloop ?? 'slurp' !! 'read';
         my $d = $lastloop ?? $*IN.slurp-rest(:bin) !! $*IN.read(1);
+        warn $d.perl if $d.elems;
         $data<buffer> ~= $d;
-        say $data.perl;
+
 
         if self!state($data) {
           self!run($data<event>.decode, $data<data>); 
         }
-        $lastloop = True if $*IN.eof;
-        say $lastloop;
+        last if $lastloop;
+        $lastloop = True if $*IN.eof && !$lastloop;
       }    
-      '/end'.say;
     }
   }
 }
@@ -61,7 +61,7 @@ method !state($state is rw) {
   if $state<state> == PROC_STATE_SIZE1 &&
      $state<buffer>.elems >= 1
   {
-    'SIZE1'.say;
+    warn 'SIZE1';
     $state<lsize> = $state<buffer>[0];
     $state<buffer> .=subbuf(1);
     $state<state>++;
@@ -69,7 +69,7 @@ method !state($state is rw) {
   if $state<state> == PROC_STATE_EVENT && 
      $state<buffer>.elems >= $state<lsize> 
   {
-    'EVENT'.say;
+    warn 'EVENT';
     $state<event> = $state<buffer>.subbuf(0, $state<lsize>); 
     $state<buffer> .=subbuf($state<lsize>);
     $state<state>++;
@@ -77,26 +77,34 @@ method !state($state is rw) {
   if $state<state> == PROC_STATE_SIZE2 && 
      $state<buffer>.elems > 0
   {
-    'SIZE2'.say;
+    warn 'SIZE2';
+    #warn $state<buffer>.elems;
+    #warn $state<buffer>.perl;
     $state<lsize> = $state<buffer>[0] * 256;
+    #warn $state<lsize>;
     $state<buffer> .=subbuf(1);
     $state<state>++;
-    say $state<buffer>.perl;
+    #warn $state<buffer>.perl;
   }
   if $state<state> == PROC_STATE_SIZEM &&
-     $state<state>.elems > 0
+     $state<buffer>.elems > 0
   {
-    'SIZEM'.say;
+    warn 'SIZEM';
+    #warn $state<buffer>.elems;
+    #warn $state<buffer>.perl;
     $state<lsize> += $state<buffer>[0];
+    #warn $state<lsize>;
     $state<buffer> .=subbuf(1);
-    say $state<buffer>.perl;
+    #try warn $state<buffer>.perl;
     $state<state>++;
   }   
   if $state<state> == PROC_STATE_DATA &&
      $state<buffer>.elems >= $state<lsize> 
   {
+    warn 'DATA';
+    #warn $state<lsize>;
     $state<data>   = $state<buffer>.subbuf(0, $state<lsize>);
-    "DATA: {$state<data>.decode}".say;
+    #try warn "DATA: {$state<data>.perl}";
     $state<buffer> .=subbuf($state<lsize>);
     $state<state> = 0; 
     return True;
@@ -152,7 +160,11 @@ method emit(Blob $event, Blob $data? = Blob.new) {
   $*OUT.write($msg) if $!sub-process;
   if !$!sub-process {
     for %!tapbuf.keys -> $i {
+      try { 
+      say "write ({$msg.perl}) to ({%!tapbuf{$i}<process>.perl});";
       %!tapbuf{$i}<process>.write($msg);
+      CATCH { default { 'CAUGHT'.say; .say; } }
+      }
     }
   }
   $msg;

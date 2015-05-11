@@ -1,0 +1,8 @@
+
+  my $data = Buf.new; 
+  while $data.elems != 3 { 
+    $data ~= $*IN.read(1);
+  };
+  $data.perl.say;
+
+  sleep 1;

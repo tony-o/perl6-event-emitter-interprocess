@@ -5,6 +5,7 @@ role Event::Emitter::Inter-Process does Event::Emitter::Role::Handler;
 has Bool $!sub-process = False;
 has Int  $!tapid;
 
+has $!AOUT;
 has @!events;
 has %!tapbuf;
 
@@ -14,26 +15,40 @@ my \PROC_STATE_SIZE2 = 2;
 my \PROC_STATE_SIZEM = 3;
 my \PROC_STATE_DATA  = 4;
 
+BEGIN { 
+  use MONKEY-TYPING;
+  use nqp;
+  augment class IO::Handle {
+    method cread(IO::Handle:D: Int(Cool:D) $bytes) {
+      my $buf := buf8.new();
+      nqp::readfh($!PIO, $buf, nqp::unbox_i($bytes));
+      warn 'bytes: ' ~ $bytes;
+      $buf;
+    }
+  }
+}
 
 submethod BUILD(Bool :$sub-process? = False) {
   $!tapid = 0; 
   $!sub-process = $sub-process;
+  $!AOUT = $*OUT if $sub-process;
+  $*OUT = $*ERR if $sub-process;
   if $sub-process { 
     start {
+      CATCH { default { warn $_.perl; } }
       my $data = %(
         buffer => Buf.new,
         lsize  => 0,
         event  => Buf.new,
         state  => PROC_STATE_SIZE1,
       );
-      my $last = 0;
+      my $last = -1;
       my $lastloop = $*IN.eof;
-      while ! $*IN.opened { sleep .1; }
       while (!$*IN.eof) || $lastloop {
-        my $d = $lastloop ?? $*IN.slurp-rest(:bin) !! $*IN.read(1);
-        warn $d.perl if $d.elems;
+        CATCH { default { warn $_.perl; } }
+        my Buf[uint8] $d = $lastloop ?? $*IN.slurp-rest(:bin) !! $*IN.cread(1);
         $data<buffer> ~= $d;
-
+        warn $data<buffer>.perl;
 
         if self!state($data) {
           self!run($data<event>.decode, $data<data>); 
@@ -53,15 +68,17 @@ method !run($event, $data) {
       default       { $e<event> eq $event }
     };
   });
-  @a.perl.say;
   $_<callable>($data) for @a;
 }
 
 method !state($state is rw) {
+  warn 'state';
+  warn $state.perl;
+  CATCH { default { warn $_.perl; } }
   if $state<state> == PROC_STATE_SIZE1 &&
      $state<buffer>.elems >= 1
   {
-    warn 'SIZE1';
+    warn '1';
     $state<lsize> = $state<buffer>[0];
     $state<buffer> .=subbuf(1);
     $state<state>++;
@@ -69,7 +86,7 @@ method !state($state is rw) {
   if $state<state> == PROC_STATE_EVENT && 
      $state<buffer>.elems >= $state<lsize> 
   {
-    warn 'EVENT';
+    warn '2';
     $state<event> = $state<buffer>.subbuf(0, $state<lsize>); 
     $state<buffer> .=subbuf($state<lsize>);
     $state<state>++;
@@ -77,34 +94,24 @@ method !state($state is rw) {
   if $state<state> == PROC_STATE_SIZE2 && 
      $state<buffer>.elems > 0
   {
-    warn 'SIZE2';
-    #warn $state<buffer>.elems;
-    #warn $state<buffer>.perl;
+    warn '3';
     $state<lsize> = $state<buffer>[0] * 256;
-    #warn $state<lsize>;
     $state<buffer> .=subbuf(1);
     $state<state>++;
-    #warn $state<buffer>.perl;
   }
   if $state<state> == PROC_STATE_SIZEM &&
      $state<buffer>.elems > 0
   {
-    warn 'SIZEM';
-    #warn $state<buffer>.elems;
-    #warn $state<buffer>.perl;
+    warn '4';
     $state<lsize> += $state<buffer>[0];
-    #warn $state<lsize>;
     $state<buffer> .=subbuf(1);
-    #try warn $state<buffer>.perl;
     $state<state>++;
   }   
   if $state<state> == PROC_STATE_DATA &&
      $state<buffer>.elems >= $state<lsize> 
   {
-    warn 'DATA';
-    #warn $state<lsize>;
+    warn '5';
     $state<data>   = $state<buffer>.subbuf(0, $state<lsize>);
-    #try warn "DATA: {$state<data>.perl}";
     $state<buffer> .=subbuf($state<lsize>);
     $state<state> = 0; 
     return True;
@@ -131,6 +138,7 @@ method hook(Proc::Async $proc) {
     }
   });
   $proc.stdout(:bin).tap(-> $data {
+    CATCH { default { warn $_.perl; } }
     $state<buffer> = $state<buffer> ~ $data;
     $c.emit(1);
   });
@@ -157,14 +165,11 @@ method emit(Blob $event, Blob $data? = Blob.new) {
 
   $msg ~= Buf.new($data);
 
-  $*OUT.write($msg) if $!sub-process;
+  $!AOUT.write($msg) if $!sub-process;
+
   if !$!sub-process {
     for %!tapbuf.keys -> $i {
-      try { 
-      say "write ({$msg.perl}) to ({%!tapbuf{$i}<process>.perl});";
-      %!tapbuf{$i}<process>.write($msg);
-      CATCH { default { 'CAUGHT'.say; .say; } }
-      }
+      await %!tapbuf{$i}<process>.write($msg);
     }
   }
   $msg;

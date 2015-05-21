@@ -31,6 +31,7 @@ $ee.on("echo", -> $data {
 });
 
 my $pro = $proc.start;
+sleep 2;
 $ee.emit('echo'.encode, $str1.encode);
 #$ee.emit('echo'.encode, $str2.encode);
 

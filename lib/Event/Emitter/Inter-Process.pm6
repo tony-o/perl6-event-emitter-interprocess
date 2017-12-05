@@ -108,18 +108,19 @@ method hook(Proc::Async $proc) {
     event   => Buf.new,
     data    => Buf.new,
   );
-  my Supply $c    .= new;
+  my Supplier $s  .= new;
+  my Supply $c     = $s.Supply;
   my        $state = %!tapbuf{$id};
   $c.tap(-> $d { 
     if self!state($state) {
       self!run($state<event>.decode, $state<data>); 
-      $c.emit(1);
+      $s.emit(1);
     }
   });
   $proc.stdout(:bin).tap(-> $data {
-    CATCH { default { warn $_.perl; } }
     $state<buffer> = $state<buffer> ~ $data;
-    $c.emit(1);
+    CATCH { default { warn $_; } }
+    try $s.emit(1);
   });
 }
 

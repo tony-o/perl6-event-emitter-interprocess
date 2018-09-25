@@ -5,7 +5,7 @@ use Event::Emitter::Inter-Process;
 my $ee = Event::Emitter::Inter-Process.new(:sub-process(True));
 
 $ee.on('echo', -> $data {
-  warn 'echo';
+  dd $data.decode;
   $ee.emit('echo'.encode, $data);
 });
 

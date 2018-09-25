@@ -108,18 +108,20 @@ method hook(Proc::Async $proc) {
     event   => Buf.new,
     data    => Buf.new,
   );
-  my Supply $c    .= new;
-  my        $state = %!tapbuf{$id};
+  my Supplier $x    .= new;
+  my          $c     = $x.Supply;
+  my          $state = %!tapbuf{$id};
+
   $c.tap(-> $d { 
     if self!state($state) {
       self!run($state<event>.decode, $state<data>); 
-      $c.emit(1);
+      $x.emit(1);
     }
   });
   $proc.stdout(:bin).tap(-> $data {
-    CATCH { default { warn $_.perl; } }
+    CATCH { default { } }
     $state<buffer> = $state<buffer> ~ $data;
-    $c.emit(1);
+    $x.emit(1);
   });
 }
 
@@ -129,6 +131,18 @@ method on($event, Callable $callable) {
     callable => $callable,
   });
 }
+
+#multi method emit(Str $event, Blob $data? = Blob.new) {
+#  $.emit($event.encode, $data);
+#}
+#
+#multi method emit(Str $event, Str $data? = '') {
+#  $.emit($event.encode, $data.encode);
+#}
+#
+#multi method emit(Blob $event, Str $data? = '') {
+#  $.emit($event, $data.encode);
+#}
 
 method emit(Blob $event, Blob $data? = Blob.new) {
   my Blob $msg  .= new;  

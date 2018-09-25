@@ -10,10 +10,12 @@ my $ee = Event::Emitter::Inter-Process.new;
 my Proc::Async $proc .= new(:w, 'perl6', '-Ilib', $*SPEC.catpath('', 't', 'child-echo.pl6'));
 
 $proc.stdout(:bin).act(-> $d {
+#  warn $d.decode;
   say '$PROC.stdout: ' ~ $d.decode; 
 });
 
 $proc.stderr(:bin).act(-> $d {
+#  warn $d.decode;
   say '$PROC.stderr: ' ~ $d.decode; 
 });
 
@@ -25,7 +27,7 @@ my $str2 = ('A'..'Z').roll(512).join('');
 my @events;
 my $promise = Promise.new;
 $ee.on("echo", -> $data {
-  say 'echo: ' ~ $data.decode;
+  #warn 'echo: ' ~ $data.decode;
   @events.push($data.decode);
   $promise.keep(True);
 });
@@ -33,9 +35,9 @@ $ee.on("echo", -> $data {
 my $pro = $proc.start;
 sleep 2;
 $ee.emit('echo'.encode, $str1.encode);
-#$ee.emit('echo'.encode, $str2.encode);
+$ee.emit('echo'.encode, $str2.encode);
 
 await Promise.allof($promise, $pro);
 
 ok @events[0] eq $str1, "Did child echo '$str1'?";
-#ok @events[1] eq $str2, "Did child echo '$str2'?";
+ok @events[1] eq $str2, "Did child echo '$str2'?";

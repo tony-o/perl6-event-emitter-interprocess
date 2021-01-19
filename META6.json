@@ -1,7 +1,7 @@
 {
     "perl"        : "6.*",
     "name"        : "Event::Emitter::Inter-Process",
-    "version"     : "1.0.0",
+    "version"     : "1.0.1",
     "description" : "Inter-process event emitter for Event::Emitter.",
     "depends"     : [ "Event::Emitter" ],
     "provides"    : {
